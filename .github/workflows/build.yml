@@ -11,6 +11,9 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [x64, arm64]
     env:
       NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
     steps:
@@ -21,7 +24,5 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
-      - name: Build Extension
-        run: |
-          dotnet build --configuration Release -p:GenerateAppxPackageOnBuild=true -p:Platform=x64
-          dotnet build --configuration Release -p:GenerateAppxPackageOnBuild=true -p:Platform=arm64
+      - name: Build Extension (${{ matrix.platform }})
+        run: dotnet build --configuration Release -p:GenerateAppxPackageOnBuild=true -p:Platform=${{ matrix.platform }}
