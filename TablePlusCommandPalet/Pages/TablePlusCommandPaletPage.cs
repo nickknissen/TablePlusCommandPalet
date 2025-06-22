@@ -26,7 +26,7 @@ internal sealed partial class TablePlusCommandPaletPage : ListPage
     {
         var connectionsWithGroups = _connectionService.GetConnectionsWithGroups().ToList();
 
-        if (!connectionsWithGroups.Any())
+        if (connectionsWithGroups.Count == 0)
         {
             return [
                 new ListItem(new NoOpCommand()) { Title = "No TablePlus connections found" }

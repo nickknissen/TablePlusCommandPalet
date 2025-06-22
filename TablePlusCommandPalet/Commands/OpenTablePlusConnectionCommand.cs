@@ -6,7 +6,7 @@ using TablePlusCommandPalet.Models;
 
 namespace TablePlusCommandPalet.Commands;
 
-internal sealed class OpenTablePlusConnectionCommand : InvokableCommand
+internal sealed partial class OpenTablePlusConnectionCommand : InvokableCommand
 {
     private readonly TablePlusConnection _connection;
     private readonly TablePlusConnectionGroup? _group;
