@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "TablePlusCommandPalet (Package)": {
+      "commandName": "MsixPackage",
+      "doNotLaunchApp": true
+    },
+    "TablePlusCommandPalet (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
