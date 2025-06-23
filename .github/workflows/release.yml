@@ -1,0 +1,51 @@
+name: Release Extension
+
+on:
+  release:
+    types:
+      - "published"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [x64, arm64]
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Get version from release
+        id: get_version
+        run: |
+          $version = "${{ github.event.release.tag_name }}"
+          echo "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Update version in manifest
+        run: |
+          $manifestPath = "TablePlusCommandPalet/Package.appxmanifest"
+          [xml]$manifest = Get-Content -Path $manifestPath
+          $manifest.Package.Identity.Version = "${{ env.VERSION }}.0"
+          $manifest.Save((Resolve-Path $manifestPath))
+
+      - name: Restore NuGet packages
+        run: dotnet restore
+
+      - name: Build Extension (${{ matrix.platform }})
+        run: dotnet build --configuration Release -p:GenerateAppxPackageOnBuild=true -p:Platform=${{ matrix.platform }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TablePlusCommandPalet-${{ env.VERSION }}-${{ matrix.platform }}
+          path: |
+            **\*.msix
+            **\*.msixbundle
+            **\*.msixupload
