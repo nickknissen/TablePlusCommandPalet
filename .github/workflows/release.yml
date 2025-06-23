@@ -32,7 +32,7 @@ jobs:
         run: |
           $manifestPath = "TablePlusCommandPalet/Package.appxmanifest"
           [xml]$manifest = Get-Content -Path $manifestPath
-          $manifest.Package.Identity.Version = "${{ env.VERSION }}"
+          $manifest.Package.Identity.Version = "${{ env.VERSION }}.0"
           $manifest.Save((Resolve-Path $manifestPath))
 
       - name: Restore NuGet packages
