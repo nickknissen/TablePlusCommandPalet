@@ -64,6 +64,6 @@
     <WarningsNotAsErrors>IL2081</WarningsNotAsErrors>
 
     <PublishTrimmed>true</PublishTrimmed>
-    <PublishSingleFile>false</PublishSingleFile>
+    <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
 </Project>
