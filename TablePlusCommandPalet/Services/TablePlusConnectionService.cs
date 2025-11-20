@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Claunia.PropertyList;
 using TablePlusCommandPalet.Models;
 
@@ -12,6 +13,15 @@ public class TablePlusConnectionService
     private readonly string _connectionsPath;
     private readonly string _connectionGroupsPath;
 
+    private readonly object _connectionsLock = new();
+    private readonly object _connectionGroupsLock = new();
+    private IReadOnlyList<TablePlusConnection> _connectionsCache = Array.Empty<TablePlusConnection>();
+    private IReadOnlyList<TablePlusConnectionGroup> _connectionGroupsCache = Array.Empty<TablePlusConnectionGroup>();
+    private DateTime _connectionsLastWriteTimeUtc = DateTime.MinValue;
+    private DateTime _connectionGroupsLastWriteTimeUtc = DateTime.MinValue;
+    private bool _connectionsCacheInitialized;
+    private bool _connectionGroupsCacheInitialized;
+
     public TablePlusConnectionService()
     {
         var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -19,13 +29,113 @@ public class TablePlusConnectionService
         
         _connectionsPath = Path.Combine(tablePlusPath, "Connections.plist");
         _connectionGroupsPath = Path.Combine(tablePlusPath, "ConnectionGroups.plist");
+
+        // Warm up caches on the thread pool so the UI thread does not wait the first time.
+        Task.Run(() =>
+        {
+            try
+            {
+                _ = GetConnections();
+                _ = GetConnectionGroups();
+            }
+            catch
+            {
+                // Ignore warm-up failures; GetConnections/GetConnectionGroups will retry on demand.
+            }
+        });
     }
 
-    public IEnumerable<TablePlusConnection> GetConnections()
+    public IReadOnlyList<TablePlusConnection> GetConnections()
+    {
+        var fileTimestamp = GetLastWriteTimeUtcSafe(_connectionsPath);
+
+        lock (_connectionsLock)
+        {
+            if (_connectionsCacheInitialized && fileTimestamp == _connectionsLastWriteTimeUtc)
+            {
+                return _connectionsCache;
+            }
+        }
+
+        var connections = LoadConnectionsFromDisk();
+
+        lock (_connectionsLock)
+        {
+            _connectionsCache = connections;
+            _connectionsLastWriteTimeUtc = fileTimestamp;
+            _connectionsCacheInitialized = true;
+            return _connectionsCache;
+        }
+    }
+
+    public IReadOnlyList<TablePlusConnectionGroup> GetConnectionGroups()
+    {
+        var fileTimestamp = GetLastWriteTimeUtcSafe(_connectionGroupsPath);
+
+        lock (_connectionGroupsLock)
+        {
+            if (_connectionGroupsCacheInitialized && fileTimestamp == _connectionGroupsLastWriteTimeUtc)
+            {
+                return _connectionGroupsCache;
+            }
+        }
+
+        var groups = LoadGroupsFromDisk();
+
+        lock (_connectionGroupsLock)
+        {
+            _connectionGroupsCache = groups;
+            _connectionGroupsLastWriteTimeUtc = fileTimestamp;
+            _connectionGroupsCacheInitialized = true;
+            return _connectionGroupsCache;
+        }
+    }
+
+    public IReadOnlyList<(TablePlusConnection Connection, TablePlusConnectionGroup Group)> GetConnectionsWithGroups()
+    {
+        var connections = GetConnections();
+        if (connections.Count == 0)
+        {
+            return Array.Empty<(TablePlusConnection, TablePlusConnectionGroup)>();
+        }
+
+        var groups = GetConnectionGroups();
+        var groupMap = groups.Count == 0
+            ? new Dictionary<string, TablePlusConnectionGroup>(StringComparer.Ordinal)
+            : groups
+                .Where(group => !string.IsNullOrEmpty(group.ID))
+                .GroupBy(group => group.ID)
+                .ToDictionary(g => g.Key!, g => g.First(), StringComparer.Ordinal);
+
+        var emptyGroup = new TablePlusConnectionGroup
+        {
+            ID = "__EMPTY__",
+            Name = "Ungrouped"
+        };
+
+        var result = new List<(TablePlusConnection, TablePlusConnectionGroup)>(connections.Count);
+
+        foreach (var connection in connections)
+        {
+            if (!string.IsNullOrEmpty(connection.GroupID) &&
+                groupMap.TryGetValue(connection.GroupID, out var group))
+            {
+                result.Add((connection, group));
+            }
+            else
+            {
+                result.Add((connection, emptyGroup));
+            }
+        }
+
+        return result;
+    }
+
+    private IReadOnlyList<TablePlusConnection> LoadConnectionsFromDisk()
     {
         if (!File.Exists(_connectionsPath))
         {
-            return Enumerable.Empty<TablePlusConnection>();
+            return Array.Empty<TablePlusConnection>();
         }
 
         try
@@ -52,15 +162,15 @@ public class TablePlusConnectionService
         }
         catch (Exception)
         {
-            return Enumerable.Empty<TablePlusConnection>();
+            return Array.Empty<TablePlusConnection>();
         }
     }
 
-    public IEnumerable<TablePlusConnectionGroup> GetConnectionGroups()
+    private IReadOnlyList<TablePlusConnectionGroup> LoadGroupsFromDisk()
     {
         if (!File.Exists(_connectionGroupsPath))
         {
-            return Enumerable.Empty<TablePlusConnectionGroup>();
+            return Array.Empty<TablePlusConnectionGroup>();
         }
 
         try
@@ -87,27 +197,8 @@ public class TablePlusConnectionService
         }
         catch (Exception)
         {
-            return Enumerable.Empty<TablePlusConnectionGroup>();
+            return Array.Empty<TablePlusConnectionGroup>();
         }
-    }
-
-    public IEnumerable<(TablePlusConnection Connection, TablePlusConnectionGroup Group)> GetConnectionsWithGroups()
-    {
-        var connections = GetConnections();
-        var groups = GetConnectionGroups().ToList();
-
-        var emptyGroup = new TablePlusConnectionGroup
-        {
-            ID = "__EMPTY__",
-            Name = "Ungrouped"
-        };
-
-        return connections.Select(connection =>
-        {
-            var group = groups.FirstOrDefault(g => g.ID == connection.GroupID, emptyGroup);
-
-            return (connection, group);
-        });
     }
 
     private static TablePlusConnection? ParseConnection(NSDictionary connectionDict)
@@ -204,6 +295,18 @@ public class TablePlusConnectionService
         catch (Exception)
         {
             return null;
+        }
+    }
+
+    private static DateTime GetLastWriteTimeUtcSafe(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
+        }
+        catch
+        {
+            return DateTime.MinValue;
         }
     }
 }

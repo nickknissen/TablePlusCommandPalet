@@ -2,6 +2,7 @@
 // The Microsoft Corporation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
@@ -24,7 +25,7 @@ internal sealed partial class TablePlusCommandPaletPage : ListPage
 
     public override IListItem[] GetItems()
     {
-        var connectionsWithGroups = _connectionService.GetConnectionsWithGroups().ToList();
+        var connectionsWithGroups = _connectionService.GetConnectionsWithGroups();
 
         if (connectionsWithGroups.Count == 0)
         {
